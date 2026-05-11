@@ -1,0 +1,26 @@
+{
+    "asia": {
+        "poblacion": 4700,
+        "capital": 45000,
+        "tierra": 14000,
+        "energia": 9000
+    },
+    "america": {
+        "poblacion": 1050,
+        "capital": 55000,
+        "tierra": 18000,
+        "energia": 10000
+    },
+    "europa": {
+        "poblacion": 1450,
+        "capital": 40000,
+        "tierra": 7000,
+        "energia": 6000
+    },
+    "africa": {
+        "poblacion": 1450,
+        "capital": 12000,
+        "tierra": 22000,
+        "energia": 3000
+    }
+}

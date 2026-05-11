@@ -338,7 +338,7 @@ class Civilizacion(multiprocessing.Process):
                 
                 # sincronizacion
                 self.barrera.wait()
-                print(f"[{self.nombre}]: finaliza ciclo {self.anio}")
+                #print(f"[{self.nombre}]: finaliza ciclo {self.anio}")
                 self.anio += 1
 
             #print(f"[{self.nombre}]: SIMULACION TERMINADA")
