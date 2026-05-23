@@ -123,7 +123,8 @@ class Civilizacion(multiprocessing.Process):
             "comida",
             "tension",
             "infectados",
-            "socios"
+            "socios",
+            "contaminacion"
         ]
 
         with open(self.archivo, "w", newline="") as f:
@@ -151,6 +152,7 @@ class Civilizacion(multiprocessing.Process):
                 round(self.sociopolitica.tension, 2),
                 self.salud.infectadosTotales,
                 socios_str,
+                round(self.agricultura.contaminacion, 2)
             ]
             
             self.buffer.append(fila)
@@ -381,7 +383,7 @@ class Civilizacion(multiprocessing.Process):
         hilo = Thread(target=self._correo, daemon=True)
         hilo.start()
         try:
-            while self.anio < 100:
+            while self.anio < 1000:
                 self._motor()
 
                 # persistencia datos del buffer

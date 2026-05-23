@@ -21,6 +21,8 @@ class Dashboard(ft.Container):
             "pib": ft.Checkbox(label="PIB"),
             "energia": ft.Checkbox(label="Energia"),
             "tension": ft.Checkbox(label="Tension"),
+            "infectados": ft.Checkbox(label="Infectados"),
+            "contaminacion": ft.Checkbox(label="Contaminacion"),
         }
 
         self.btn = ft.ElevatedButton(

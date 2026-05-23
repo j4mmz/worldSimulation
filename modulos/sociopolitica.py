@@ -26,7 +26,14 @@ class Sociopolitica:
         pib_pc = (pib / poblacion) if poblacion > 0 else 0
         
         # el pib_pc ayuda a calmar a las masas
-        z = -4.0 + (5.0 * desigualdad) + (10.0 * racionamiento) - (2.0 * pib_pc)
+        # muy estable
+        #z = -4.0 + (5.0 * desigualdad) + (10.0 * racionamiento) - (2.0 * pib_pc)
+
+        # muy caotico
+        #z = -2.0 + (12.0 * desigualdad) + (12.0 * racionamiento) - (0.5 * pib_pc)
+
+        # algo entre medias de los dos
+        z = -4.0 + (6.0 * desigualdad) + (9.0 * racionamiento) - (2.0 * pib_pc)
 
         self.__prob_revuelta = 1.0 / (1.0 + math.exp(-z))
         self.__tension = self.__prob_revuelta * 100.0

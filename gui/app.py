@@ -70,7 +70,8 @@ class App:
                             "pib": float(row["pib"]),
                             "energia": float(row["energia"]),
                             "tension": float(row["tension"]),
-                            "infectados": int(row["infectados"])
+                            "infectados": int(row["infectados"]),
+                            "contaminacion": float(row["contaminacion"]),
                         }
                     )
 

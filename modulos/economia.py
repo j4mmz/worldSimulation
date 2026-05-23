@@ -82,8 +82,9 @@ class Economia:
             
         freno_toxico = np.exp(-0.00005 * contaminacion)
         
-        return self.__tecno * eficiencia_e * freno_toxico * (cap_efectivo**alpha) * (trabajadores**(1-alpha))
-
+        prod_base = self.__tecno * eficiencia_e * freno_toxico * (cap_efectivo**alpha) * (trabajadores**(1-alpha))
+        return max(100.0, prod_base)
+    
     def avanzar(self, trabajadores, poblacion, corrupcion, capital_humano, contaminacion):
         """ actualiza el ciclo economico anual """
         self.__pib = self._cobbDouglas(trabajadores, contaminacion)
