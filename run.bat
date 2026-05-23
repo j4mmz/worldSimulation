@@ -6,5 +6,8 @@ if not exist .venv (
     uv pip install -r requirements.txt
 )
 echo Lanzando Simulador...
-uv run python -m gui.app
+
+set PYTHONPATH=.
+
+uv run python gui/app.py
 pause

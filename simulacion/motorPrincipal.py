@@ -87,7 +87,4 @@ def runSim(progress_queue):
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("spawn", force=True
-    )
-
     runSim(multiprocessing.Queue())

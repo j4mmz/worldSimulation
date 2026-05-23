@@ -1,6 +1,7 @@
 import os
 import csv
 import flet as ft
+import multiprocessing
 import plotly.graph_objects as go
 
 from gui.config import ConfigParams
@@ -65,10 +66,11 @@ class App:
                         c,
                         int(row["anio"]),
                         {
-                            "poblacion": float(row["poblacion"]),
+                            "poblacion": int(row["poblacion"]),
                             "pib": float(row["pib"]),
                             "energia": float(row["energia"]),
                             "tension": float(row["tension"]),
+                            "infectados": int(row["infectados"])
                         }
                     )
 
@@ -90,4 +92,5 @@ def main(page: ft.Page):
     App(page)
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method("spawn", force=True)
     ft.run(main)

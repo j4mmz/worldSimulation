@@ -69,39 +69,46 @@ class Civilizacion(multiprocessing.Process):
         de caos
         """
         # protejemos con el lock ya que accedemos a self.directorio que puede ser modificado por el correo
-        with self.lock:
-            if random.random() > 0.15:
+        if random.random() > 0.15:
+            try:
                 if msg.destino in self.directorio:
                     self.directorio[msg.destino].put(msg)
-            else: 
+            except Exception:
                 pass  # el mensaje se pierde en la red (caos distribuido)
 
 
     def _actualizarCache(self, socio):
         """ actualiza la cache de contactos comerciales utilizando el algoritmo Second Chance (Clock) """
         with self.lock:
-            # caso 1: el socio ya esta en la cache, gana una segunda oportunidad
+            # el socio ya esta en la cache, gana una segunda oportunidad
             if socio in self.cache_comercio:
                 self.cache_comercio[socio] = 1
                 return
             
-            # caso 2: el socio no esta en la cache pero hay espacio libre
+            # el socio no esta en la cache pero hay espacio libre
             if len(self.cache_comercio) < self.capacidad_cache:
                 self.cache_comercio[socio] = 1
                 return
             
-            # caso 3: la cache esta llena, aplicamos el algoritmo Clock puro
-            while True:
-                for c in list(self.cache_comercio.keys()):
-                    if self.cache_comercio[c] == 1:
-                        # consume su segunda oportunidad y baja a 0
-                        self.cache_comercio[c] = 0
-                    else:
-                        # encontramos un elemento con el bit 0, lo expulsamos
-                        del self.cache_comercio[c]
-                        # insertamos el nuevo socio con su bit a 1
-                        self.cache_comercio[socio] = 1
-                        return
+            # la cache esta llena, aplicamos el algoritmo Clock
+            candidatos = list(self.cache_comercio.keys())
+            
+            # buscamos si hay alguno con bit 0
+            for c in candidatos:
+                if self.cache_comercio.get(c, 0) == 0:
+                    del self.cache_comercio[c]
+                    self.cache_comercio[socio] = 1
+                    return
+            
+            # si todos tenian el bit 1, el primero de la lista es expulsado
+            primer_candidato = candidatos[0]
+            del self.cache_comercio[primer_candidato]
+            self.cache_comercio[socio] = 1
+            
+            # el resto de elementos pierden su oportunidad
+            for resto in self.cache_comercio:
+                if resto != socio:
+                    self.cache_comercio[resto] = 0
 
 
     def _crearCSV(self):
@@ -162,7 +169,10 @@ class Civilizacion(multiprocessing.Process):
 
         while True:
             try:
-                msg = self.buzon.get()
+                try:
+                    msg = self.buzon.get()
+                except (OSError, TypeError, AttributeError):
+                    break
 
                 # señal de finalizacion del hilo
                 if msg is None:
@@ -189,7 +199,7 @@ class Civilizacion(multiprocessing.Process):
                         id_trans = msg.payload["id_referencia"]
                         if id_trans in self.ventas_pendientes:
                             pago = self.ventas_pendientes.pop(id_trans)
-                            self.economia.pib = pago
+                            self.economia.transaccion(pago) 
 
                     elif msg.tipo == "defuncion":
                         if msg.origen in self.directorio:
@@ -202,6 +212,9 @@ class Civilizacion(multiprocessing.Process):
 
             except Empty:
                 continue
+            except Exception as e:
+                print(f"[{self.nombre.upper()}-correo] Error inesperado: {e}")
+                break
 
 
     def _enviarPandemia(self):
@@ -351,18 +364,24 @@ class Civilizacion(multiprocessing.Process):
         self._enviarPandemia()
         self._comercio()
 
+        self.progress_queue.put({
+            "tipo": "progreso",
+            "civilizacion": self.nombre,
+            "anio": self.anio
+        })
+
 
     def run(self):
         """ bucle principal del proceso de civilizacion """
 
         # indicamos aqui para que no de problemas
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
 
         # iniciamos el hilo de escucha de mensajes
         hilo = Thread(target=self._correo, daemon=True)
         hilo.start()
         try:
-            while self.anio < 1000:
+            while self.anio < 100:
                 self._motor()
 
                 # persistencia datos del buffer
@@ -371,7 +390,6 @@ class Civilizacion(multiprocessing.Process):
                 # sincronizacion                
                 self.barrera.wait()
                 self.anio += 1
-
         except Exception as e:
             print(f"[{self.nombre}] error o interrupcion: {e}")
 
@@ -410,4 +428,5 @@ class Civilizacion(multiprocessing.Process):
                 "tipo": "fin",
                 "civilizacion": self.nombre
             })
+            
           
