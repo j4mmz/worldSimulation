@@ -48,7 +48,7 @@ class Economia:
 
     def recibir(self, recurso, cantidad):
         """ gestiona la entrada de mercancias por comercio """
-
+        
         self.__recursos[recurso] += cantidad
 
     def agregarComida(self, cantidad):

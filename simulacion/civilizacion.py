@@ -56,6 +56,53 @@ class Civilizacion(multiprocessing.Process):
         self._crearCSV()
         self.socios_ciclo = []
 
+        # almacena las ventas pendientes de cobro de la civilizacion {id_mensaje: precio_cobro}
+        self.ventas_pendientes = {}
+
+        # para la gestion de pandemias
+        self.cache_comercio = {}
+        self.capacidad_cache = 2
+
+
+    def _enviarMensaje(self, msg: Mensaje) -> None:
+        """ centraliza el envio de mensajes, con una probabilidad de perdida para un poco
+        de caos
+        """
+        # protejemos con el lock ya que accedemos a self.directorio que puede ser modificado por el correo
+        with self.lock:
+            if random.random() > 0.15:
+                if msg.destino in self.directorio:
+                    self.directorio[msg.destino].put(msg)
+            else: 
+                pass  # el mensaje se pierde en la red (caos distribuido)
+
+
+    def _actualizarCache(self, socio):
+        """ actualiza la cache de contactos comerciales utilizando el algoritmo Second Chance (Clock) """
+        with self.lock:
+            # caso 1: el socio ya esta en la cache, gana una segunda oportunidad
+            if socio in self.cache_comercio:
+                self.cache_comercio[socio] = 1
+                return
+            
+            # caso 2: el socio no esta en la cache pero hay espacio libre
+            if len(self.cache_comercio) < self.capacidad_cache:
+                self.cache_comercio[socio] = 1
+                return
+            
+            # caso 3: la cache esta llena, aplicamos el algoritmo Clock puro
+            while True:
+                for c in list(self.cache_comercio.keys()):
+                    if self.cache_comercio[c] == 1:
+                        # consume su segunda oportunidad y baja a 0
+                        self.cache_comercio[c] = 0
+                    else:
+                        # encontramos un elemento con el bit 0, lo expulsamos
+                        del self.cache_comercio[c]
+                        # insertamos el nuevo socio con su bit a 1
+                        self.cache_comercio[socio] = 1
+                        return
+
 
     def _crearCSV(self):
         """ crea el fichero de salida con las cabeceras correspondientes """
@@ -124,17 +171,30 @@ class Civilizacion(multiprocessing.Process):
                 with self.lock:
                     if msg.tipo == "comercio":
                         recurso = msg.payload["recurso"]
-                        pago_recibido = msg.payload["pago"]
-                        cantidad_entregada = msg.payload["cantidad"]
+                        self.economia.recibir(recurso, msg.payload["cantidad"])
                         
-                        # el vendedor recibe el dinero
-                        self.economia.pib += pago_recibido
+                        # actualizamos la cache con el emisor del recurso
+                        self._actualizarCache(msg.origen)
 
-                        self.economia.recibir(
-                            recurso,
-                            cantidad_entregada
+                        # enviamos el ack para confirmar la recepcion
+                        ack = Mensaje(
+                            origen=self.nombre,
+                            destino=msg.origen,
+                            tipo="ack_comercio",
+                            payload={"id_referencia": msg.id}
                         )
-                        
+                        self._enviarMensaje(ack)
+
+                    elif msg.tipo == "ack_comercio":
+                        id_trans = msg.payload["id_referencia"]
+                        if id_trans in self.ventas_pendientes:
+                            pago = self.ventas_pendientes.pop(id_trans)
+                            self.economia.pib = pago
+
+                    elif msg.tipo == "defuncion":
+                        if msg.origen in self.directorio:
+                            del self.directorio[msg.origen]
+
                     elif msg.tipo == "pandemia":
                         self.salud.importar(
                             msg.payload["cantidad"]
@@ -145,87 +205,67 @@ class Civilizacion(multiprocessing.Process):
 
 
     def _enviarPandemia(self):
-        """ propaga la infeccion a un continente aleatorio si se supera el umbral """
+        """ propaga la infeccion a los contactos de la cache si se supera el umbral """
 
         with self.lock:
+            if self.salud.infectados < 10 and random.random() < 0.05:
+                self.salud.importar(50)
+            
             if self.salud.infectados < 100:
                 return
 
-        destinos = [
-            x for x in self.directorio.keys()
-            if x != self.nombre
-        ]
-
-        if not destinos:
-            return
+        with self.lock:
+            # obtenemos los contactos comerciales actuales guardados en la cache de segunda oportunidad
+            contactos_actuales = list(self.cache_comercio.keys())
         
-        destino = random.choice(destinos)
-        msg = Mensaje(
-            origen=self.nombre,
-            destino=destino,
-            tipo="pandemia",
-            payload={"cantidad": 10}
-        )
-
-        # comprobamos que no haya habido otra pandemia antes para que no haya infinitas
-        # de todas formas creo que sirve de poco pq no hay tipo de virus son solo infectados totales
-        if self.ultima_pandemia > 0:
-            self.directorio[destino].put(msg)
-            self.ultima_pandemia = 30
-        else:
-            self.ultima_pandemia -= 1
+        for destino in contactos_actuales:
+            if random.random() < 0.75:
+                msg = Mensaje(
+                    origen=self.nombre,
+                    destino=destino,
+                    tipo="pandemia",
+                    payload={"cantidad": int(self.salud.infectados * 0.10)}
+                )
+                self._enviarMensaje(msg)
 
 
     def _comercio(self):
-        """ gestiona el comercio priorizando materiales como flujo constante """
+        """ gestiona el comercio priorizando materiales como flujo constante"""
 
         with self.lock:
             pob = self.demografia.poblacionTotal
             precio_contrato = 2000.0
             
-            # comercio de materiales 
-            # comerciamos materiales siempre que tengamos un minimo de reserva
             puede_exportar_materiales = (self.economia.materiales > 2000)
-            
-            # recursos secundarios 
-            # sobra mucho: mas de 500 raciones por persona
             sobra_comida = (self.economia.alimentos > (pob * 500.0))
-
-            # menos de 20 raciones por persona
             necesita_energia = (self.economia.energia < 10000)
-
+            
             recurso_a_enviar = None
             cantidad = 0
 
-            # logica de decision jerarquica
             if puede_exportar_materiales:
                 recurso_a_enviar = "materiales"
                 cantidad = 1500
-
             elif sobra_comida:
                 recurso_a_enviar = "comida"
                 cantidad = 5000
-
             elif necesita_energia and self.economia.pib > precio_contrato:
-
-                # compramos energia
                 recurso_a_enviar = "pago_por_energia"
                 cantidad = 5000
 
             if recurso_a_enviar and self.economia.pib > precio_contrato:
-                destinos = [
-                    x for x in self.directorio.keys()
-                    if x != self.nombre
-                ]
+                destinos = [x for x in self.directorio.keys() if x != self.nombre]
 
                 if destinos:
                     destino = random.choice(destinos)
-
+                    self._actualizarCache(destino)
                     if destino not in self.socios_ciclo:
                         self.socios_ciclo.append(destino)
 
-                    # el emisor siempre paga el coste de logistica/transaccion
+                    # el emisor siempre paga el coste de logistica por adelantado
                     self.economia.transaccion(-precio_contrato)
+
+                    # creamos el mensaje de comercio
                     msg = Mensaje(
                         origen=self.nombre,
                         destino=destino,
@@ -237,7 +277,9 @@ class Civilizacion(multiprocessing.Process):
                         }
                     )
 
-                    self.directorio[destino].put(msg)
+                    # guardamos la venta en el mapa de transacciones en vuelo
+                    self.ventas_pendientes[msg.id] = precio_contrato
+                    self._enviarMensaje(msg)
 
 
     def _motor(self):
@@ -251,40 +293,36 @@ class Civilizacion(multiprocessing.Process):
                 self.colapso = True
                 poblacion = 0
 
-            fuerza_laboral = self.demografia.fuerzaLaboral
-            
-            # reparto estrategico de la fuerza laboral
+            fuerza_laboral = self.demografia.fuerzaLaboral          
             agricultores = int(fuerza_laboral * 0.45)
             mineros = int(fuerza_laboral * 0.15)
             energeticos = int(fuerza_laboral * 0.10)
-
             industria = max(0, fuerza_laboral - agricultores - mineros - energeticos)
 
-            # extraccion de materias primas y energia
+            # extraccion de materiales y energia (la energia se trata como un recurso extraible)
             self.economia.extraerEnergia(energeticos)
             self.economia.extraerMinerales(mineros)
-
-            # produccion de comida condicionada por energia y materiales
+            
+            # produccion de comida 
             comida = self.agricultura.producir(
                 trabajadores=agricultores,
                 tecnologia=self.economia.tecnologia,
                 energia=self.economia.energia,
                 fertilizantes=self.economia.materiales
             )
-
             self.economia.agregarComida(comida)
 
-            # resolucion de salud y aplicacion de bajas demograficas
+            # resolucion de salud y aplicar muertes por enfermedad y tal
             self.salud.avanzar(poblacion, self.economia.tecnologia)
             self.demografia.aplicarMuertes(self.salud.muertes)
 
-            # avance temporal de la poblacion y la economia
             self.demografia.avanzar(
                 self.economia.alimentos,
                 self.sociopolitica.tension,
                 self.economia.tecnologia
             )
 
+            # calculo de la economia
             self.economia.avanzar(
                 trabajadores=industria,
                 poblacion=poblacion,
@@ -293,9 +331,9 @@ class Civilizacion(multiprocessing.Process):
                 contaminacion=self.agricultura.contaminacion
             )
 
-            # degradacion del entorno y estabilidad social
             self.agricultura.actualizar(poblacion, self.economia.pib)
 
+            # avanzamos en sociopolitca, y vemos si ha habido revuelta
             hubo_revuelta = self.sociopolitica.avanzar(
                 pib=self.economia.pib,
                 poblacion=poblacion,
@@ -304,10 +342,8 @@ class Civilizacion(multiprocessing.Process):
             )
 
             if hubo_revuelta:
-                #print(f"[{self.nombre}] ({self.anio}) ¡estalla una revolucion!")
-                self.sociopolitica.ejecutarRevolucion()
+                self.sociopolitica.ejecutarRevolucion(poblacion)
 
-                # calculamos bajas
                 bajas_conflicto = int(poblacion * random.uniform(0.1, 0.3))
                 self.demografia.aplicarMuertes(bajas_conflicto, "revolucion")
                 
@@ -319,43 +355,51 @@ class Civilizacion(multiprocessing.Process):
     def run(self):
         """ bucle principal del proceso de civilizacion """
 
-        # inicamos aqui para que no de problemas
+        # indicamos aqui para que no de problemas
         self.lock = threading.Lock()
 
         # iniciamos el hilo de escucha de mensajes
         hilo = Thread(target=self._correo, daemon=True)
         hilo.start()
         try:
-
-            # el bucle se ejecuta hasta el colapso o el limite de tiempo
-            while self.anio < 100:
-
-                # ejecucion de la logica interna y externa
+            while self.anio < 1000:
                 self._motor()
-                
-                # persistencia de datos en el buffer
-                self._registrar()
-                
-                # sincronizacion
-                self.barrera.wait()
-                #print(f"[{self.nombre}]: finaliza ciclo {self.anio}")
-                self.anio += 1
 
-            #print(f"[{self.nombre}]: SIMULACION TERMINADA")
+                # persistencia datos del buffer
+                self._registrar()
+
+                # sincronizacion                
+                self.barrera.wait()
+                self.anio += 1
 
         except Exception as e:
             print(f"[{self.nombre}] error o interrupcion: {e}")
 
-            # evitamos que los demas procesos se queden colgados
+            # evitamos que el resto de procesos se queden colgados esperando
+            # a una civilizacion muerta
             self.barrera.abort()
             
         finally:
             self.colapso = True
 
-            # desbloqueamos el hilo de correo
+            msg_muerte = Mensaje(
+                origen=self.nombre,
+                destino="broadcast",
+                tipo="defuncion",
+                payload={}
+            )
+
+            with self.lock:
+                destinos_finales = list(self.directorio.keys())
+
+            for destino in destinos_finales:
+                if destino != self.nombre:
+                    msg_muerte.destino = destino
+                    self._enviarMensaje(msg_muerte)
+
             self.buzon.put(None)
 
-            # volcado final de seguridad
+            # volcado final
             with self.lock:
                 if self.buffer:
                     with open(self.archivo, "a", newline="") as f:
@@ -366,7 +410,4 @@ class Civilizacion(multiprocessing.Process):
                 "tipo": "fin",
                 "civilizacion": self.nombre
             })
-
-            #hilo.join(timeout=1)
-            #print(f"[{self.nombre}]: notificado fin")
-
+          
