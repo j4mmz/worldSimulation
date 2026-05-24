@@ -23,5 +23,3 @@ En una terminal, ejecutar el siguiente comando:
 Al terminar, ejecuta `uv --version`. Si no funciona, ejecuta el comando `source $HOME/.cargo/env` para recargar la configuracion y prueba de nuevo. Para mas informacion visita la web oficial [https://docs.astral.sh/uv/getting-started/installation/#__tabbed_1_1]
 
 Una vez instalado, ejecuta `.\run.sh` en la terminal para correr la simulacion. Si da error por problemas de servicio utiliza `chmod +x run.sh` para darle permisos y prueba de nuevo
-
-_Nota [10-5-2026]: aun falta por agregar eventos para que la simulacion sea mas realista, y no tan ideal. Acutalmente la poblacion crece sin problemas, junto con el resto de parametros (siempre que los parametros sean correctos)_
