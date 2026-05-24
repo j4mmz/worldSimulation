@@ -21,7 +21,7 @@ class Civilizacion(multiprocessing.Process):
 
         self.nombre = nombre
         self.config = config
-
+        self.max_year = 1000
         # para la pantalla de carga
         self.progress_queue = progress_queue
         
@@ -383,7 +383,7 @@ class Civilizacion(multiprocessing.Process):
         hilo = Thread(target=self._correo, daemon=True)
         hilo.start()
         try:
-            while self.anio < 1000:
+            while self.anio < self.max_year:
                 self._motor()
 
                 # persistencia datos del buffer

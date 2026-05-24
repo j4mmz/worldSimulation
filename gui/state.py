@@ -10,7 +10,7 @@ class SimulationState:
         }
 
         self.current_year = 0
-        self.max_year = 1000
+        self.max_year = 10000
 
         self.selected_variable = "poblacion"
         self.selected_continents = ["asia", "europa", "america", "africa"]
